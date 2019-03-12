@@ -1,0 +1,5 @@
+cd /
+closetest CONGRATS.TXT
+close 0
+close 1
+exit

@@ -1,0 +1,4 @@
+cd /
+cp CONGRATS.TXT congrats.txt 342
+cp MEDIA/404-FAIL.JPG fail.jpg 30152
+exit 

@@ -1,0 +1,5 @@
+cd /
+lsdir /
+lsdir /PEOPLE/AG8T
+lsdir /PEOPLE/MTP5CX
+exit
