@@ -15,6 +15,18 @@ char* merge_str(const char* a, const char* b) {
     return result;
 }
 
+//trim a string
+std::string trim(const std::string& str)
+{
+    size_t first = str.find_first_not_of(' ');
+    if (std::string::npos == first)
+    {
+        return str;
+    }
+    size_t last = str.find_last_not_of(' ');
+    return str.substr(first, (last - first + 1));
+}
+
 //read a sector into buf
 void read_sector(uint32_t sector_index, void* buf) {
     ssize_t bytes_read = pread(fileno(disk_fp), buf, bpb->bpb_bytesPerSec, sector_index*bpb->bpb_bytesPerSec);
@@ -74,6 +86,11 @@ std::vector<void*> read_cluster_chain(uint32_t cluster_index) {
 }
 
 bool legal_dir_name(std::string dir_name) {
+    dir_name = trim(dir_name);
+    //for cases of . and ..
+    if (dir_name.compare(".") == 0 || dir_name.compare("..") == 0) {
+        return true;
+    }
     if (dir_name.size() == 0 || dir_name[0] == '.') {
         return false;
     }
@@ -92,13 +109,14 @@ bool legal_dir_name(std::string dir_name) {
 }
 
 uint8_t* to_sys_name(std::string dir_name) {
+    dir_name = trim(dir_name);
     //convert dirname into system array repr
     uint8_t* dir_name_sys = (uint8_t*)calloc(11, sizeof(uint8_t));
     for(size_t i = 0; i < 11; i++) {
         dir_name_sys[i] = 0x20;
     }
     std::string::size_type dot_idx = dir_name.find('.');
-    if (dot_idx == std::string::npos) {
+    if (dot_idx == std::string::npos || dir_name.compare(".") == 0 || dir_name.compare("..") == 0) {
         //no extension
         for(size_t j = 0; j < dir_name.size() ; j++) {
             dir_name_sys[j] = toupper(dir_name[j]);
@@ -127,6 +145,9 @@ uint32_t extract_cluster_idx(dirEnt entry) {
 
 // read a cluster for directory entries
 dirEnt* read_cluster_dir_entries(uint32_t cluster_idx, uint32_t* dir_count) {
+    if (cluster_idx == 0) {
+        cluster_idx = bpb->bpb_RootClus;
+    }
     std::vector<void*> data = read_cluster_chain(cluster_idx);
     uint32_t dirent_per_cluster = (bpb->bpb_secPerClus*bpb->bpb_bytesPerSec) / sizeof(dirEnt);
     dirEnt* result = (dirEnt*)malloc(dirent_per_cluster*data.size()*sizeof(dirEnt));
@@ -173,6 +194,7 @@ bool FAT_mount(const char *path) {
 
 dirEnt* OS_readDir(const char *dirname) {
     std::string dirstr(dirname);
+    dirstr = trim(dirstr);
     if (dirstr[0] == '/') {
         if (dirstr.length() == 1) {
             //read root directory
@@ -183,10 +205,16 @@ dirEnt* OS_readDir(const char *dirname) {
             dirstr = dirstr.substr(1, dirstr.length()-1);
         }
     } else {
+        char* absolute_path;
         //reduce the relative path problem to absolute path problem
-        char* temp = merge_str(cwdPath, "/");
-        char* absolute_path = merge_str(temp, dirname);
-        free(temp);
+        if (strcmp(cwdPath, "/") == 0) {
+            //cwd is root
+            absolute_path = merge_str(cwdPath, dirname);
+        } else {
+            char* temp = merge_str(cwdPath, "/");
+            absolute_path = merge_str(temp, dirname);
+            free(temp);
+        }
         return OS_readDir(absolute_path);
     }
     //break dirstr into dirname tokens
@@ -258,6 +286,7 @@ dirEnt* OS_readDir(const char *dirname) {
 
 int FAT_cd(const char *path) {
     std::string pathstr(path);
+    pathstr = trim(pathstr);
     dirEnt* new_entries;
     char* new_cwd_path;
     if (pathstr[0] == '/') {
@@ -271,7 +300,13 @@ int FAT_cd(const char *path) {
         }
     } else {
         //relative path
-        new_cwd_path = merge_str(cwdPath, path);
+        if (strcmp(cwdPath, "/") == 0) {
+            new_cwd_path = merge_str(cwdPath, path);            
+        } else {
+            char* temp = merge_str(cwdPath, "/");
+            new_cwd_path = merge_str(temp, path);
+            free(temp);
+        }
         new_entries = OS_readDir(new_cwd_path); 
         if (new_entries == NULL) {
             free(new_cwd_path);
@@ -306,5 +341,9 @@ int main() {
     FAT_mount("sampledisk32.raw");
     //std::cout << "mounted" << std::endl;
     //debug
-    print_dir_entries("people/../people/yyz5w");
+    FAT_cd("people");
+    print_dir_entries(".");
+    FAT_cd("..");
+    FAT_cd("people");
+    print_dir_entries("yyz5w");
 }
