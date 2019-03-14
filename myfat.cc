@@ -18,7 +18,7 @@ char* merge_str(const char* a, const char* b) {
 //remove . and .. from cwd
 void reconstruct_cwd_path() {
     std::string current_path(cwdPath);
-    char* new_path = (char*)malloc(strlen(cwdPath)+1);
+    char* new_path = (char*)calloc(strlen(cwdPath)+1, 1);
     //break current path into dirname tokens
     std::vector<std::string> dir_names;
     std::string::size_type i = 0;
@@ -34,13 +34,23 @@ void reconstruct_cwd_path() {
     //use stack to remove . and ..
     std::vector<std::string> processed_names;
     for (size_t i=0;i<dir_names.size();i++) {
-        if (dir_names[i].compare(".") == 0) {
+        if (dir_names[i].size() == 0) {
+            continue;
+        } else if (dir_names[i].compare(".") == 0) {
             continue;
         } else if (dir_names[i].compare("..") == 0) {
             processed_names.pop_back();
         } else {
             processed_names.push_back(dir_names[i]);
         }
+    }
+    //processed_names empty means root
+    if (processed_names.size() == 0) {
+        new_path = (char*)calloc(2*sizeof(char),1);
+        strcpy(new_path, "/");
+        free(cwdPath);
+        cwdPath = new_path;
+        return;
     }
     //put result into new cwd path
     for(size_t i = 0; i < processed_names.size(); i++) {
