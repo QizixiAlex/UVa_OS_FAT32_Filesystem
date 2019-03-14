@@ -9,10 +9,46 @@ fileDesc* file_descriptors;
 
 //merge 2 string
 char* merge_str(const char* a, const char* b) {
-    char* result = (char*)malloc(strlen(a)+strlen(b));
-    memcpy(result, a, strlen(a));
+    char* result = (char*)malloc(strlen(a)+strlen(b)+1);
+    strcpy(result, a);
     strcat(result, b);
     return result;
+}
+
+//remove . and .. from cwd
+void reconstruct_cwd_path() {
+    std::string current_path(cwdPath);
+    char* new_path = (char*)malloc(strlen(cwdPath)+1);
+    //break current path into dirname tokens
+    std::vector<std::string> dir_names;
+    std::string::size_type i = 0;
+    std::string::size_type j = current_path.find('/');
+    while (j!=std::string::npos) {
+        dir_names.push_back(current_path.substr(i,j-i));
+        i = ++j;
+        j = current_path.find('/', j);
+    }
+    if (j==std::string::npos && i < current_path.length()) {
+        dir_names.push_back(current_path.substr(i, current_path.length()));
+    }
+    //use stack to remove . and ..
+    std::vector<std::string> processed_names;
+    for (size_t i=0;i<dir_names.size();i++) {
+        if (dir_names[i].compare(".") == 0) {
+            continue;
+        } else if (dir_names[i].compare("..") == 0) {
+            processed_names.pop_back();
+        } else {
+            processed_names.push_back(dir_names[i]);
+        }
+    }
+    //put result into new cwd path
+    for(size_t i = 0; i < processed_names.size(); i++) {
+        strcat(new_path, "/");
+        strcat(new_path, processed_names[i].c_str());
+    }
+    free(cwdPath);
+    cwdPath = new_path;
 }
 
 //trim a string
@@ -85,6 +121,7 @@ std::vector<void*> read_cluster_chain(uint32_t cluster_index) {
     return result;
 }
 
+//check if directory name is legal
 bool legal_dir_name(std::string dir_name) {
     dir_name = trim(dir_name);
     //for cases of . and ..
@@ -108,6 +145,7 @@ bool legal_dir_name(std::string dir_name) {
     return true;
 }
 
+//generate system repr of directory name
 uint8_t* to_sys_name(std::string dir_name) {
     dir_name = trim(dir_name);
     //convert dirname into system array repr
@@ -135,6 +173,7 @@ uint8_t* to_sys_name(std::string dir_name) {
     return dir_name_sys;
 }
 
+//extract cluster index from dirEnt
 uint32_t extract_cluster_idx(dirEnt entry) {
     u_int32_t cluster_idx = 0;
     cluster_idx = cluster_idx | entry.dir_fstClusHI;
@@ -192,6 +231,7 @@ bool FAT_mount(const char *path) {
     return true;
 }
 
+//read directory into dir entries
 dirEnt* OS_readDir(const char *dirname) {
     std::string dirstr(dirname);
     dirstr = trim(dirstr);
@@ -284,6 +324,7 @@ dirEnt* OS_readDir(const char *dirname) {
     return cur_entries;
 }
 
+//change current directory
 int FAT_cd(const char *path) {
     std::string pathstr(path);
     pathstr = trim(pathstr);
@@ -318,6 +359,7 @@ int FAT_cd(const char *path) {
     cwd_dir_entries = new_entries;
     free(cwdPath);
     cwdPath = new_cwd_path;
+    reconstruct_cwd_path();
     return 1;
 }
 
@@ -342,8 +384,13 @@ int main() {
     //std::cout << "mounted" << std::endl;
     //debug
     FAT_cd("people");
+    printf("path changed into: %s\n", cwdPath);
+    FAT_cd(".");
+    printf("path changed into: %s\n", cwdPath);
     print_dir_entries(".");
     FAT_cd("..");
+    printf("path changed into: %s\n", cwdPath);
     FAT_cd("people");
+    printf("path changed into: %s\n", cwdPath);
     print_dir_entries("yyz5w");
 }
