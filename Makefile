@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-Wall -Werror -pedantic -std=c++11
+CXXFLAGS=-Wall -pedantic -std=c++11
 
 all: myfat
 
@@ -11,4 +11,6 @@ myfat.o: myfat.cc myfat.h
 clean:
 	rm -f *.o myfat
 
+debug: myfat.cc myfat.h
+	$(CXX) $(CXXFLAGS) -g $@ $^
 
