@@ -205,6 +205,7 @@ dirEnt* read_cluster_dir_entries(uint32_t cluster_idx, uint32_t* dir_count) {
     for (unsigned int i=0;i<data.size();i++) {
         memcpy(result_ptr, data[i], sizeof(dirEnt)*dirent_per_cluster);
         result_ptr += dirent_per_cluster;
+        free(data[i]);
     }
     *dir_count = dirent_per_cluster*data.size();
     return result;
@@ -226,11 +227,10 @@ bool FAT_mount(const char *path) {
     }
     bpb = (bpbFat32*)buf;
     //initialize file descriptors
-    fileDesc file_descriptors[FILE_DESCRIPTOR_LIMIT];
+    file_descriptors = (fileDesc*)calloc(FILE_DESCRIPTOR_LIMIT, sizeof(fileDesc));
     for (int i=0;i<FILE_DESCRIPTOR_LIMIT;i++) {
         file_descriptors[i].used = false;
-        file_descriptors[i].offset = 0;
-        file_descriptors[i].cluster = 0;
+        file_descriptors[i].cluster_idx = 0;
     }
     //initialize fdCount
     fdCount = 0;
@@ -371,6 +371,108 @@ int FAT_cd(const char *path) {
     cwdPath = new_cwd_path;
     reconstruct_cwd_path();
     return 1;
+}
+
+int FAT_open(const char* path) {
+    //first check for free fd
+    int free_fd = -1;
+    for(size_t i = 0; i < FILE_DESCRIPTOR_LIMIT; i++) {
+        if (!file_descriptors[i].used) {
+            file_descriptors[i].used = true;
+            free_fd = i;
+            break;
+        }
+    }
+    if (free_fd < 0) {
+        return -1;
+    }
+    fdCount++;
+    //find file
+    std::string pathstr(path);
+    size_t idx = pathstr.find_last_of("/");
+    const char* dir_path = pathstr.substr(0,idx).c_str();
+    const char* file_name = pathstr.substr(idx+1, pathstr.size()-idx-1).c_str();
+    dirEnt* entries = OS_readDir(dir_path);
+    if (entries == NULL) {
+        fdCount--;
+        file_descriptors[free_fd].used = false;
+        return -1;
+    }
+    std::string file_name_str(file_name);
+    uint8_t* file_name_sys = to_sys_name(file_name_str);
+    dirEnt* entry_ptr = entries;
+    while(entry_ptr->dir_name[0] != 0){
+        //check directory
+        if(entry_ptr->dir_attr & 0x10 != 0) {
+            //is directory
+            entry_ptr++;
+            continue;
+        }
+        //check filename
+        bool match = true;
+        for(size_t i = 0; i < 11; i++) {
+            if (entry_ptr->dir_name[i] != file_name_sys[i]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            file_descriptors[free_fd].cluster_idx = extract_cluster_idx(*entry_ptr);
+            free(entries);
+            return free_fd;
+        } else {
+            entry_ptr++;
+        }
+    }
+    //no match
+    free(entries);
+    fdCount--;
+    file_descriptors[free_fd].used = false;
+    return -1;
+}
+
+int FAT_close(int fd) {
+    if (fd < 0 || fd >= FILE_DESCRIPTOR_LIMIT) {
+        //invalid fd number
+        return -1;
+    }
+    if (file_descriptors[fd].used) {
+        file_descriptors[fd].used = false;
+        fdCount--;
+        return 1;
+    }
+    return -1;    
+}
+
+int FAT_pread(int fildes, void *buf, int nbyte, int offset) {
+    if (fildes < 0 || fildes >= FILE_DESCRIPTOR_LIMIT) {
+        return -1;
+    }
+    fileDesc descriptor = file_descriptors[fildes];
+    if (!descriptor.used) {
+        return -1;
+    }
+    std::vector<void*> file_clusters = read_cluster_chain(descriptor.cluster_idx);
+    uint32_t cluster_bytes = bpb->bpb_bytesPerSec*bpb->bpb_secPerClus;
+    void* file_clusters_mem = malloc(cluster_bytes*file_clusters.size());
+    char* mem_ptr = (char*)file_clusters_mem;
+    for(size_t i = 0; i < file_clusters.size(); i++) {
+        memcpy(mem_ptr, file_clusters[i], cluster_bytes);
+        mem_ptr += cluster_bytes;
+        free(file_clusters[i]);
+    }
+    //use mem ptr for reading
+    uint32_t actual_file_size = cluster_bytes*file_clusters.size();
+    uint32_t actual_read = nbyte > actual_file_size-offset ? actual_file_size-offset : nbyte;
+    if (actual_read < 0) {
+        free(file_clusters_mem);
+        return -1;
+    }
+    mem_ptr = (char*)file_clusters_mem;
+    mem_ptr += offset;
+    memcpy(buf, mem_ptr, actual_read);
+    free(file_clusters_mem);
+    return actual_read;
 }
 
 // debug helpers

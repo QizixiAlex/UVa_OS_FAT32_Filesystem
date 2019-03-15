@@ -59,8 +59,7 @@ typedef struct __attribute__ ((packed)) {
 
 typedef struct {
     bool used;
-    uint32_t offset;
-    uint32_t cluster;
+    uint32_t cluster_idx;
 } fileDesc;
 
 extern bool FAT_mount(const char *path);
