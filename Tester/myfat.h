@@ -1,6 +1,16 @@
 #ifndef __MYFAT_H__
 #define __MYFAT_H__
 
+#define FILE_DESCRIPTOR_LIMIT 128
+#include <stdint.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <string>
+#include <string.h>
+#include <vector>
+#include <iostream>
+#include <ctype.h>
+
 typedef struct __attribute__ ((packed)) {
 
         uint8_t bs_jmpBoot[3];          // jmp instr to boot code
@@ -47,15 +57,22 @@ typedef struct __attribute__ ((packed)) {
         uint32_t dir_fileSize;          // 32-bit DWORD hoding this file's size in bytes
 } dirEnt;
 
+typedef struct {
+    bool used;
+    uint32_t cluster_idx;
+} fileDesc;
 
+extern bool FAT_mount(const char *path);
 extern int FAT_cd(const char *path);
 extern int FAT_open(const char *path);
 extern int FAT_close(int fd);
 extern int FAT_pread(int fildes, void *buf, int nbyte, int offset);
-extern dirEnt * FAT_readDir(const char *dirname);
-extern bool FAT_mount(const char *path);
+extern dirEnt * OS_readDir(const char *dirname);
 
-//extern char *CWD;          // current working dir name
-//int fdCount; 
-
+extern char *cwdPath;          // current working dir name
+extern int fdCount; 
+extern FILE* disk_fp;
+extern bpbFat32* bpb;
+extern dirEnt* cwd_dir_entries;
+extern fileDesc* file_descriptors;
 #endif
